@@ -1,4 +1,4 @@
-package parse
+package decode
 
 import (
 	"strconv"
@@ -9,6 +9,7 @@ import (
 const msg string = " this string may not follow the bencode schema"
 
 // Decodes a bencode string into its respective type: string, int, slice, or map
+// NOTE: this function does not handle bounds out of range errors
 func DecodeBencode(bencode string) (interface{}, int, error) {
 	if unicode.IsDigit(rune(bencode[0])) {
 		// Parse string -> string
@@ -59,10 +60,10 @@ func DecodeBencode(bencode string) (interface{}, int, error) {
 
 		for bencode[i] != 'e' {
 			key, keyLen, err := DecodeBencode(bencode[i:])
-			keyStr, ok := key.(string)
 			if err != nil {
 				return "", 0, err
 			}
+			keyStr, ok := key.(string)
 			if !ok {
 				panic("key not string!" + msg)
 			}

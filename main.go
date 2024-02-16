@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/faisal-fawad/vistorrent/parse"
+	"github.com/faisal-fawad/vistorrent/decode"
 )
 
 func main() {
@@ -15,7 +15,7 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	decoded, _, err := parse.DecodeBencode(string(bytes))
+	decoded, _, err := decode.DecodeBencode(string(bytes))
 	if err != nil {
 		fmt.Println(err)
 		return

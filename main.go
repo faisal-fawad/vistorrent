@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -9,17 +8,20 @@ import (
 )
 
 func main() {
-	var filename string = "debian.iso.torrent"
-	bytes, err := os.ReadFile(filename)
+	torrent, err := decode.ParseTorrent(os.Args[1])
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	decoded, _, err := decode.DecodeBencode(string(bytes))
-	if err != nil {
-		fmt.Println(err)
-		return
+
+	// Print structure
+	fmt.Println("Announce: " + torrent.Announce)
+	fmt.Printf("InfoHash: %x \n", torrent.InfoHash)
+	fmt.Printf("PieceLength: %d \n", torrent.PieceLength)
+	fmt.Printf("Length: %d \n", torrent.Length)
+	fmt.Println("Name: " + torrent.Name)
+	fmt.Println("Pieces: ")
+	for i := range torrent.Pieces {
+		fmt.Printf("%x \n", torrent.Pieces[i])
 	}
-	out, _ := json.Marshal(decoded)
-	fmt.Println(string(out))
 }

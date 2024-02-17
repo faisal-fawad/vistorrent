@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// The bencode schema can be found here:
-// https://www.bittorrent.org/beps/bep_0003.html#bencoding
-
 type decodeTest struct {
 	bencode  string
 	expected interface{}

@@ -8,8 +8,10 @@ import (
 
 const msg string = " this string may not follow the bencode schema"
 
-// Decodes a bencode string into its respective type: string, int, slice, or map
-// NOTE: this function does not handle bounds out of range errors
+// Decodes a bencode string into its respective type in Go: string, int, slice, or map
+// The bencode schema can be found here:
+// https://www.bittorrent.org/beps/bep_0003.html#bencoding
+// TODO: handle index out of bounds errors
 func DecodeBencode(bencode string) (interface{}, int, error) {
 	if unicode.IsDigit(rune(bencode[0])) {
 		// Parse string -> string
@@ -73,8 +75,11 @@ func DecodeBencode(bencode string) (interface{}, int, error) {
 			if err != nil {
 				return "", 0, err
 			}
-			i += valLen
 
+			if keyStr == "info" {
+				dict[keyStr+" bencoded"] = bencode[i : i+valLen] // Needed for infohash
+			}
+			i += valLen
 			dict[keyStr] = val
 		}
 

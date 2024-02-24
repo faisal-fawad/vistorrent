@@ -1,4 +1,4 @@
-package parse
+package torrent
 
 import (
 	"crypto/sha1"
@@ -10,8 +10,6 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-
-	"github.com/faisal-fawad/vistorrent/decode"
 )
 
 type Torrent struct {
@@ -37,7 +35,7 @@ func ParseTorrent(filename string) (Torrent, error) {
 		return Torrent{}, err
 	}
 
-	res, _, err := decode.DecodeBencode(string(bytes))
+	res, _, err := DecodeBencode(string(bytes))
 	if err != nil {
 		return Torrent{}, err
 	}
@@ -77,7 +75,7 @@ func splitPieces(pieces string, chunkLength int) [][]byte {
 }
 
 // Gets the peers of a torrent by sending a GET request to the torrent tracker
-func (torrent Torrent) GetPeers(peerId [20]byte) (string, error) {
+func (torrent Torrent) GetPeers(peerId []byte) (string, error) {
 	base, err := url.Parse(torrent.Announce)
 	if err != nil {
 		return "", err
@@ -111,7 +109,7 @@ func (torrent Torrent) GetPeers(peerId [20]byte) (string, error) {
 
 // Parses the peers of a torrent given the correct bencode
 func ParsePeers(bencode string) ([]Peer, error) {
-	res, _, err := decode.DecodeBencode(bencode)
+	res, _, err := DecodeBencode(bencode)
 	if err != nil {
 		return []Peer{}, nil
 	}

@@ -4,36 +4,34 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/faisal-fawad/vistorrent/parse"
+	"github.com/faisal-fawad/vistorrent/torrent"
 )
 
 func main() {
-	torrent, err := parse.ParseTorrent(os.Args[1])
+	torr, err := torrent.ParseTorrent(os.Args[1])
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
 	// Print structure
-	fmt.Println("Announce: " + torrent.Announce)
-	fmt.Printf("InfoHash: %x \n", torrent.InfoHash)
-	fmt.Printf("PieceLength: %d \n", torrent.PieceLength)
-	fmt.Printf("Length: %d \n", torrent.Length)
-	fmt.Println("Name: " + torrent.Name)
+	fmt.Println("Announce: " + torr.Announce)
+	fmt.Printf("InfoHash: %x \n", torr.InfoHash)
+	fmt.Printf("PieceLength: %d \n", torr.PieceLength)
+	fmt.Printf("Length: %d \n", torr.Length)
+	fmt.Println("Name: " + torr.Name)
 	fmt.Println("Pieces: ")
-	for i := range torrent.Pieces {
-		fmt.Printf("%x \n", torrent.Pieces[i])
+	for i := range torr.Pieces {
+		fmt.Printf("%x \n", torr.Pieces[i])
 	}
 
-	var peerId [20]byte
-	copy(peerId[:], "00112233445566778899")
 	fmt.Println("Peers Bencode: ")
-	bencode, err := torrent.GetPeers(peerId)
+	bencode, err := torr.GetPeers([]byte("00112233445566778899"))
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	peers, err := parse.ParsePeers(bencode)
+	peers, err := torrent.ParsePeers(bencode)
 	if err != nil {
 		fmt.Println(err)
 		return

@@ -38,5 +38,6 @@ func main() {
 	}
 	for i := range peers {
 		fmt.Printf("%s:%d \n", peers[i].IP, peers[i].Port)
+		// peers[i].PeerHandshake()
 	}
 }

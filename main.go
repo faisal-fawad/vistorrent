@@ -38,6 +38,6 @@ func main() {
 	}
 	for i := range peers {
 		fmt.Printf("%s:%d \n", peers[i].IP, peers[i].Port)
-		// peers[i].PeerHandshake()
+		peers[i].PeerHandshake(torr.InfoHash, []byte("00112233445566778899"))
 	}
 }

@@ -2,15 +2,11 @@ package torrent
 
 import (
 	"crypto/sha1"
-	"encoding/binary"
 	"errors"
-	"io"
-	"net"
-	"net/http"
-	"net/url"
 	"os"
-	"strconv"
 )
+
+const hashLength int = 20
 
 type Torrent struct {
 	Announce    string
@@ -21,9 +17,12 @@ type Torrent struct {
 	Name        string
 }
 
-type Peer struct {
-	IP   net.IP
-	Port uint16
+type TorrentError struct {
+	Err error
+}
+
+func (t *TorrentError) Error() string {
+	return t.Err.Error()
 }
 
 // Parses a torrent (AKA metainfo) file into a structure
@@ -32,105 +31,56 @@ type Peer struct {
 func ParseTorrent(filename string) (Torrent, error) {
 	bytes, err := os.ReadFile(filename)
 	if err != nil {
-		return Torrent{}, err
+		return Torrent{}, &TorrentError{err}
 	}
 
 	res, _, err := DecodeBencode(string(bytes))
 	if err != nil {
-		return Torrent{}, err
+		return Torrent{}, &TorrentError{err}
 	}
 
-	// Assume torrent file contains correct keys
+	// Populate the torrent structure using type assertion
 	metainfo := res.(map[string]interface{})
 	info := metainfo["info"].(map[string]interface{})
-	bencodedInfo := metainfo["info bencoded"].(string)
+	if metainfo == nil || info == nil {
+		return Torrent{}, &TorrentError{errors.New("key not found")}
+	}
 
-	// Calculate SHA-1 hash of the bencoded info dictionary
-	hasher := sha1.New()
-	hasher.Write([]byte(bencodedInfo))
-
-	// Populate torrent structure
 	var file Torrent
 	file.Announce = metainfo["announce"].(string)
-	file.InfoHash = hasher.Sum(nil)
-	file.Pieces = splitPieces(info["pieces"].(string), 20)
+	strInfoHash := metainfo["info bencoded"].(string)
+	strPieces := info["pieces"].(string)
 	file.PieceLength = info["piece length"].(int)
 	file.Length = info["length"].(int)
 	file.Name = info["name"].(string)
+	if file.Announce == "" || strInfoHash == "" || strPieces == "" || file.PieceLength == 0 || file.Length == 0 || file.Name == "" {
+		return Torrent{}, &TorrentError{errors.New("value not found")}
+	}
+
+	// Calculate SHA-1 hash of the bencoded info dictionary and split piece hashes
+	hasher := sha1.New()
+	hasher.Write([]byte(strInfoHash))
+	file.InfoHash = hasher.Sum(nil)
+	file.Pieces, err = SplitPieces(strPieces, hashLength)
+	if err != nil {
+		return Torrent{}, &TorrentError{err}
+	}
+
 	return file, nil
 }
 
 // Helper function to get SHA-1 piece hashes
-func splitPieces(pieces string, chunkLength int) [][]byte {
+func SplitPieces(pieces string, chunkLength int) ([][]byte, error) {
 	if len(pieces)%chunkLength != 0 {
-		panic("invalid pieces")
+		return [][]byte{}, &TorrentError{errors.New("invalid pieces")}
 	}
+
 	var chunk []byte
 	chunks := make([][]byte, 0, len(pieces)/chunkLength)
 	for len(pieces) >= chunkLength {
 		chunk, pieces = []byte(pieces[:chunkLength]), pieces[chunkLength:]
 		chunks = append(chunks, chunk)
 	}
-	return chunks
-}
 
-// Gets the peers of a torrent by sending a GET request to the torrent tracker
-func (torrent Torrent) GetPeers(peerId []byte) (string, error) {
-	base, err := url.Parse(torrent.Announce)
-	if err != nil {
-		return "", err
-	}
-	query := url.Values{
-		"info_hash":  []string{string(torrent.InfoHash)},
-		"peer_id":    []string{string(peerId[:])},            // Assume length of 20 bytes
-		"port":       []string{"6881"},                       // Default port for downloading
-		"uploaded":   []string{"0"},                          // Assume zero for now
-		"downloaded": []string{"0"},                          // Assume zero for now
-		"left":       []string{strconv.Itoa(torrent.Length)}, // Assume full length for now
-		"compact":    []string{"1"},
-	}
-	base.RawQuery = query.Encode()
-
-	res, err := http.Get(base.String())
-	if err != nil {
-		return "", err
-	}
-	body, err := io.ReadAll(res.Body)
-	res.Body.Close()
-	if err != nil {
-		return "", err
-	}
-	if res.StatusCode != 200 {
-		return "", errors.New("request to peer failed with: " + res.Status)
-	}
-
-	return string(body), nil
-}
-
-// Parses the peers of a torrent given the correct bencode
-func ParsePeers(bencode string) ([]Peer, error) {
-	res, _, err := DecodeBencode(bencode)
-	if err != nil {
-		return []Peer{}, nil
-	}
-
-	// Ignore interval key for now
-	info := res.(map[string]interface{})
-	strPeers := info["peers"].(string)
-
-	const peerSize int = 6
-	const ipSize int = 4
-	if len(strPeers)%peerSize != 0 {
-		panic("invalid peers")
-	}
-	peers := make([]Peer, 0, len(strPeers)/peerSize)
-	var strPeer []byte
-	var peer Peer
-	for len(strPeers) >= peerSize {
-		strPeer, strPeers = []byte(strPeers[:peerSize]), strPeers[peerSize:]
-		peer.IP = net.IP(strPeer[:ipSize])
-		peer.Port = binary.BigEndian.Uint16(strPeer[ipSize:])
-		peers = append(peers, peer)
-	}
-	return peers, nil
+	return chunks, nil
 }

@@ -26,12 +26,7 @@ func main() {
 	}
 
 	fmt.Println("Peers Bencode: ")
-	bencode, err := torr.GetPeers([]byte("00112233445566778899"))
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	peers, err := torrent.ParsePeers(bencode)
+	peers, err := torr.GetPeers([]byte("00112233445566778899"))
 	if err != nil {
 		fmt.Println(err)
 		return

@@ -3,6 +3,7 @@ package torrent
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -11,11 +12,16 @@ import (
 )
 
 const peerSize int = 6
-const ipSize int = 4
+const ipSize int = peerSize - 2
 
 type Peer struct {
 	IP   net.IP
 	Port uint16
+}
+
+// Converts the peer to its string representation
+func (peer *Peer) String() string {
+	return fmt.Sprintf("%s:%d", peer.IP.String(), peer.Port)
 }
 
 // Gets the peers of a torrent by sending a GET request to the torrent tracker
@@ -63,7 +69,7 @@ func ParsePeers(bencode string) ([]Peer, error) {
 		return []Peer{}, nil
 	}
 
-	// Ignore interval key for now
+	// TODO: implement interval key, ignored for now
 	info := res.(map[string]interface{})
 	strPeers := info["peers"].(string)
 

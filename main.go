@@ -20,15 +20,19 @@ func main() {
 	fmt.Printf("PieceLength: %d \n", torr.PieceLength)
 	fmt.Printf("Length: %d \n", torr.Length)
 	fmt.Println("Name: " + torr.Name)
-	peers, err := torr.GetPeers([]byte("00112233445566778899"))
+	peers, err := torr.GetPeers([]byte("00112233445566778891"))
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
 	// For now, lets work with the first peer only
-	err = torr.DownloadPiece(peers[0], []byte("00112233445566778899"))
-	if err != nil {
-		fmt.Println(err)
+	for i := range peers {
+		err = torr.DownloadPiece(peers[i], []byte("00112233445566778891"))
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			break
+		}
 	}
 }

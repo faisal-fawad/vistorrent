@@ -20,19 +20,15 @@ func main() {
 	fmt.Printf("PieceLength: %d \n", torr.PieceLength)
 	fmt.Printf("Length: %d \n", torr.Length)
 	fmt.Println("Name: " + torr.Name)
-	fmt.Println("Pieces: ")
-	for i := range torr.Pieces {
-		fmt.Printf("%x \n", torr.Pieces[i])
-	}
-
-	fmt.Println("Peers Bencode: ")
 	peers, err := torr.GetPeers([]byte("00112233445566778899"))
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	for i := range peers {
-		fmt.Printf("%s:%d \n", peers[i].IP, peers[i].Port)
-		peers[i].PeerHandshake(torr.InfoHash, []byte("00112233445566778899"))
+
+	// For now, lets work with the first peer only
+	err = torr.DownloadPiece(peers[0], []byte("00112233445566778899"))
+	if err != nil {
+		fmt.Println(err)
 	}
 }

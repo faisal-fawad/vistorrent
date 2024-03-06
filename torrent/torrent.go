@@ -11,8 +11,8 @@ const hashLength int = 20
 type Torrent struct {
 	Announce    string
 	InfoHash    []byte
-	Pieces      [][]byte
-	PieceLength int
+	PieceHashes [][]byte
+	PieceLength uint32
 	Length      int
 	Name        string
 }
@@ -50,7 +50,7 @@ func ParseTorrent(filename string) (Torrent, error) {
 	file.Announce = metainfo["announce"].(string)
 	strInfoHash := metainfo["info bencoded"].(string)
 	strPieces := info["pieces"].(string)
-	file.PieceLength = info["piece length"].(int)
+	file.PieceLength = uint32(info["piece length"].(int))
 	file.Length = info["length"].(int)
 	file.Name = info["name"].(string)
 	if file.Announce == "" || strInfoHash == "" || strPieces == "" || file.PieceLength == 0 || file.Length == 0 || file.Name == "" {
@@ -58,10 +58,8 @@ func ParseTorrent(filename string) (Torrent, error) {
 	}
 
 	// Calculate SHA-1 hash of the bencoded info dictionary and split piece hashes
-	hasher := sha1.New()
-	hasher.Write([]byte(strInfoHash))
-	file.InfoHash = hasher.Sum(nil)
-	file.Pieces, err = SplitPieces(strPieces, hashLength)
+	file.InfoHash = GetHash([]byte(strInfoHash))
+	file.PieceHashes, err = SplitPieces(strPieces, hashLength)
 	if err != nil {
 		return Torrent{}, &TorrentError{err}
 	}
@@ -83,4 +81,11 @@ func SplitPieces(pieces string, chunkLength int) ([][]byte, error) {
 	}
 
 	return chunks, nil
+}
+
+// Helper function calculate the SHA-1 hash of a string
+func GetHash(data []byte) []byte {
+	hasher := sha1.New()
+	hasher.Write([]byte(data))
+	return hasher.Sum(nil)
 }

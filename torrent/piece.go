@@ -6,6 +6,7 @@ import (
 )
 
 const lengthSize int = 4
+const blockSize uint32 = 16384
 
 type Message struct {
 	Length  uint32
@@ -19,7 +20,7 @@ const (
 	Interested    byte = 2 // No payload
 	NotInterested byte = 3 // No payload
 	Have          byte = 4 // Payload contains index
-	Bitfield      byte = 5 // Payload consists of a singular byte
+	Bitfield      byte = 5 // Payload consists of bytes (bits) for piece possession
 	Request       byte = 6 // Payload contains index, begin, and length
 	Piece         byte = 7 // Same payload as request
 	Cancel        byte = 8 // Payload contains index, begin, and piece
@@ -73,6 +74,7 @@ func (m *Message) HandleMessage() {
 }
 
 func (t *Torrent) DownloadPiece(peer Peer, peerId []byte) error {
+	// NOTE: all integers are encoded as 4 bytes big endian!
 	// Do handshake
 	conn, _, err := peer.PeerHandshake(t.InfoHash, peerId)
 	if err != nil {
@@ -80,9 +82,7 @@ func (t *Torrent) DownloadPiece(peer Peer, peerId []byte) error {
 	}
 	defer conn.Close()
 
-	conn.Write([]byte{Unchoke})
-	conn.Write([]byte{Interested})
-
+	// Read the bitfield; TODO: check if piece is available through bitfield
 	buf, err := ReadFullWithLength(conn, 4, 0)
 	if err != nil {
 		return err
@@ -91,8 +91,62 @@ func (t *Torrent) DownloadPiece(peer Peer, peerId []byte) error {
 	if err != nil {
 		return err
 	}
-
-	fmt.Printf("Message (bytes): %x \n", msg.BuildMessage())
+	fmt.Printf("Message (bytes): %x \n", buf)
 	msg.HandleMessage()
+
+	// Write interested
+	interested := Message{
+		1,
+		Interested,
+		nil,
+	}
+	conn.Write(interested.BuildMessage())
+
+	// Read unchoke
+	buf, err = ReadFullWithLength(conn, 4, 0)
+	if err != nil {
+		return err
+	}
+	msg, err = ParseMessage(buf)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Message (bytes): %x \n", buf)
+	msg.HandleMessage()
+
+	// TODO: Make function to handle this stuff and other stuff above!
+	// Break piece into blocks of 16 KiB (2^14 = 16384 bytes)
+	var i uint32
+	for i = 0; i*blockSize < t.PieceLength; i++ {
+		requestPayload := make([]byte, 12)
+		var size uint32 = blockSize
+		if t.PieceLength-i*blockSize < blockSize {
+			size = t.PieceLength - i*blockSize
+		}
+		binary.BigEndian.PutUint32(requestPayload, i)
+		binary.BigEndian.PutUint32(requestPayload[4:], i*blockSize)
+		binary.BigEndian.PutUint32(requestPayload[8:], size)
+
+		// Write request
+		request := Message{
+			12 + 1,
+			Request,
+			requestPayload,
+		}
+		conn.Write(request.BuildMessage())
+
+		// Read request
+		buf, err = ReadFullWithLength(conn, 4, 0)
+		if err != nil {
+			return err
+		}
+		msg, err = ParseMessage(buf)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Message (bytes): %x \n", buf)
+		msg.HandleMessage()
+	}
+
 	return nil
 }

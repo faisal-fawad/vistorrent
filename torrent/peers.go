@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 )
 
 const peerSize int = 6
@@ -26,21 +25,23 @@ func (peer *Peer) String() string {
 
 // Gets the peers of a torrent by sending a GET request to the torrent tracker
 func (torrent *Torrent) GetPeers(peerId []byte) ([]Peer, error) {
+	// Build the url
 	base, err := url.Parse(torrent.Announce)
 	if err != nil {
 		return []Peer{}, err
 	}
 	query := url.Values{
 		"info_hash":  []string{string(torrent.InfoHash)},
-		"peer_id":    []string{string(peerId[:])},            // Assume length of 20 bytes
-		"port":       []string{"6881"},                       // Default port for downloading
-		"uploaded":   []string{"0"},                          // Assume zero for now
-		"downloaded": []string{"0"},                          // Assume zero for now
-		"left":       []string{strconv.Itoa(torrent.Length)}, // Assume full length for now
+		"peer_id":    []string{string(peerId)},             // Assume length of 20 bytes
+		"port":       []string{"6881"},                     // Default port for downloading
+		"uploaded":   []string{"0"},                        // Assume zero for now
+		"downloaded": []string{"0"},                        // Assume zero for now
+		"left":       []string{fmt.Sprint(torrent.Length)}, // Assume full length for now
 		"compact":    []string{"1"},
 	}
 	base.RawQuery = query.Encode()
 
+	// Send GET request
 	res, err := http.Get(base.String())
 	if err != nil {
 		return []Peer{}, err
@@ -51,7 +52,7 @@ func (torrent *Torrent) GetPeers(peerId []byte) ([]Peer, error) {
 		return []Peer{}, err
 	}
 	if res.StatusCode != 200 {
-		return []Peer{}, errors.New("request to peer failed with status: " + res.Status + "\n" + "and body: " + string(body))
+		return []Peer{}, errors.New("request to peer failed with status: " + res.Status + "\nand body: \n" + string(body))
 	}
 
 	peers, err := ParsePeers(string(body))

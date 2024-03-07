@@ -70,7 +70,7 @@ func (peer Peer) PeerHandshake(infoHash []byte, peerId []byte) (net.Conn, Handsh
 	fmt.Printf("In <- %x \n", in)
 
 	// Receive handshake
-	out, err := ReadFullWithLength(conn, 1, hashLength+peerIdSize+extensionSize)
+	out, err := ReadFullWithLength(conn, 1, uint32(hashLength+peerIdSize+extensionSize))
 	if err != nil {
 		return nil, Handshake{}, err
 	}
@@ -84,12 +84,12 @@ func (peer Peer) PeerHandshake(infoHash []byte, peerId []byte) (net.Conn, Handsh
 	return conn, outHand, nil
 }
 
-// Helper function to read data from a TCP connection where the data uses the following schema:
+// A blocking helper function to read data from a TCP connection where the data uses the following schema:
 // A number of bytes n to indicate the size of the message, which is then followed by n bytes of data
 // This function also provides a parameter for extra bytes to support dealing with certain types of messages
 // An example message looks like: 0x0000000205e0 -> 4 bytes to represent the length of the payload (0x00000002),
 // which in decimal representation is 2, followed by 2 bytes of data (0x05e0)
-func ReadFullWithLength(conn net.Conn, prefixLength int, extraBytes int) ([]byte, error) {
+func ReadFullWithLength(conn net.Conn, prefixLength int, extraBytes uint32) ([]byte, error) {
 	if prefixLength > 4 || prefixLength < 0 {
 		return []byte{}, errors.New("prefix length must be in the range 0-4")
 	}
@@ -101,10 +101,7 @@ func ReadFullWithLength(conn net.Conn, prefixLength int, extraBytes int) ([]byte
 
 	lengthSlice := make([]byte, 4-prefixLength, 4)
 	lengthSlice = append(lengthSlice, bufLength...)
-	var length int = int(binary.BigEndian.Uint32(lengthSlice))
-	if err != nil {
-		return []byte{}, err
-	}
+	var length uint32 = binary.BigEndian.Uint32(lengthSlice)
 	buf := make([]byte, length+extraBytes)
 	_, err = io.ReadFull(conn, buf)
 	if err != nil {

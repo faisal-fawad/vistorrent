@@ -1,6 +1,7 @@
 package torrent
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"unicode"
@@ -117,6 +118,6 @@ func DecodeBencode(bencode string) (interface{}, int, error) {
 
 		return dict, i + 1, nil
 	} else {
-		return "", 0, &DecodeError{"'%q' unexpected"}
+		return "", 0, &DecodeError{fmt.Sprintf("'%q' unexpected", bencode[0])}
 	}
 }

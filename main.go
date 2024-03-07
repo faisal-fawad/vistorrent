@@ -28,10 +28,11 @@ func main() {
 
 	// For now, lets work with the first peer only
 	for i := range peers {
-		err = torr.DownloadPiece(peers[i], []byte("00112233445566778891"))
+		piece, err := torr.DownloadPiece(peers[i], []byte("00112233445566778891"))
 		if err != nil {
 			fmt.Println(err)
 		} else {
+			fmt.Printf("Successful piece: %x \n", piece)
 			break
 		}
 	}

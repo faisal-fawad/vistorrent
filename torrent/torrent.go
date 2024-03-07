@@ -8,15 +8,19 @@ import (
 
 const hashLength int = 20
 
+// A torrent structure, note that the sizes of InfoHash and PieceHashes are not explictly
+// defined to make working with them easier. Typically, a hash has a length of 20, which is
+// constantly defined above.
 type Torrent struct {
 	Announce    string
 	InfoHash    []byte
 	PieceHashes [][]byte
-	PieceLength uint32
-	Length      int
+	PieceLength uint32 // Can't be negative
+	Length      uint32 // Also can't be negative
 	Name        string
 }
 
+// A structure to define errors that occur with parsing a torrent file
 type TorrentError struct {
 	Err error
 }
@@ -51,7 +55,7 @@ func ParseTorrent(filename string) (Torrent, error) {
 	strInfoHash := metainfo["info bencoded"].(string)
 	strPieces := info["pieces"].(string)
 	file.PieceLength = uint32(info["piece length"].(int))
-	file.Length = info["length"].(int)
+	file.Length = uint32(info["length"].(int))
 	file.Name = info["name"].(string)
 	if file.Announce == "" || strInfoHash == "" || strPieces == "" || file.PieceLength == 0 || file.Length == 0 || file.Name == "" {
 		return Torrent{}, &TorrentError{errors.New("value not found")}
@@ -67,7 +71,7 @@ func ParseTorrent(filename string) (Torrent, error) {
 	return file, nil
 }
 
-// Helper function to get SHA-1 piece hashes
+// Helper function to split a string on every multiple of n (chunkLength)
 func SplitPieces(pieces string, chunkLength int) ([][]byte, error) {
 	if len(pieces)%chunkLength != 0 {
 		return [][]byte{}, &TorrentError{errors.New("invalid pieces")}
@@ -83,7 +87,7 @@ func SplitPieces(pieces string, chunkLength int) ([][]byte, error) {
 	return chunks, nil
 }
 
-// Helper function calculate the SHA-1 hash of a string
+// Helper function to calculate the SHA-1 hash
 func GetHash(data []byte) []byte {
 	hasher := sha1.New()
 	hasher.Write([]byte(data))

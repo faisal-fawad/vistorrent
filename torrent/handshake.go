@@ -2,7 +2,6 @@ package torrent
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -36,7 +35,8 @@ func ParseHandshake(stream []byte) (Handshake, error) {
 	var h Handshake
 	length := stream[0]
 	if len(stream) != int(length)+extensionSize+hashLength+peerIdSize+1 {
-		return Handshake{}, fmt.Errorf("error parsing handshake: expected: %d -> got: %d", int(length)+extensionSize+hashLength+peerIdSize+1, len(stream))
+		return Handshake{}, &DecodeError{fmt.Sprintf("error parsing handshake: "+
+			"expected: %d -> got: %d", int(length)+extensionSize+hashLength+peerIdSize+1, len(stream))}
 	}
 
 	h.ProtocolLength = length
@@ -49,10 +49,12 @@ func ParseHandshake(stream []byte) (Handshake, error) {
 }
 
 func (peer Peer) PeerHandshake(infoHash []byte, peerId []byte) (net.Conn, Handshake, error) {
-	conn, err := net.DialTimeout("tcp", peer.String(), 3*time.Second)
+	conn, err := net.DialTimeout("tcp", peer.String(), 3*time.Second) // 3 second timeout
 	if err != nil {
-		return nil, Handshake{}, err
+		return nil, Handshake{}, &NetworkError{"failed to connect to peer"}
 	}
+	conn.SetDeadline(time.Now().Add(time.Second * 3))
+	defer conn.SetDeadline(time.Time{}) // Remove deadline on success
 
 	// Send handshake
 	var inHand Handshake = Handshake{
@@ -65,9 +67,8 @@ func (peer Peer) PeerHandshake(infoHash []byte, peerId []byte) (net.Conn, Handsh
 	var in []byte = inHand.BuildHandshake()
 	_, err = conn.Write(in)
 	if err != nil {
-		return nil, Handshake{}, err
+		return nil, Handshake{}, &NetworkError{"failed to write to peer"}
 	}
-	fmt.Printf("In <- %x \n", in)
 
 	// Receive handshake
 	out, err := ReadFullWithLength(conn, 1, uint32(hashLength+peerIdSize+extensionSize))
@@ -77,9 +78,8 @@ func (peer Peer) PeerHandshake(infoHash []byte, peerId []byte) (net.Conn, Handsh
 
 	outHand, err := ParseHandshake(out)
 	if err != nil {
-		return nil, Handshake{}, err
+		return nil, Handshake{}, &DecodeError{err.Error()}
 	}
-	fmt.Printf("Out -> %x \n", outHand.BuildHandshake())
 
 	return conn, outHand, nil
 }
@@ -91,21 +91,27 @@ func (peer Peer) PeerHandshake(infoHash []byte, peerId []byte) (net.Conn, Handsh
 // which in decimal representation is 2, followed by 2 bytes of data (0x05e0)
 func ReadFullWithLength(conn net.Conn, prefixLength int, extraBytes uint32) ([]byte, error) {
 	if prefixLength > 4 || prefixLength < 0 {
-		return []byte{}, errors.New("prefix length must be in the range 0-4")
+		return []byte{}, fmt.Errorf("prefix length must be between 0 to 4")
 	}
 	bufLength := make([]byte, prefixLength)
 	_, err := io.ReadFull(conn, bufLength)
 	if err != nil {
-		return []byte{}, err
+		return []byte{}, &NetworkError{"failed to read from peer: " + err.Error()}
 	}
 
 	lengthSlice := make([]byte, 4-prefixLength, 4)
 	lengthSlice = append(lengthSlice, bufLength...)
 	var length uint32 = binary.BigEndian.Uint32(lengthSlice)
+
+	// Keep alive
+	if length == 0 {
+		fmt.Println("Keep alive!")
+	}
+
 	buf := make([]byte, length+extraBytes)
 	_, err = io.ReadFull(conn, buf)
 	if err != nil {
-		return []byte{}, err
+		return []byte{}, &NetworkError{"failed to read from peer: " + err.Error()}
 	}
 
 	return append(bufLength, buf...), nil

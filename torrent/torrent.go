@@ -2,7 +2,6 @@ package torrent
 
 import (
 	"crypto/sha1"
-	"errors"
 	"os"
 )
 
@@ -22,11 +21,11 @@ type Torrent struct {
 
 // A structure to define errors that occur with parsing a torrent file
 type TorrentError struct {
-	Err error
+	err string
 }
 
 func (t *TorrentError) Error() string {
-	return t.Err.Error()
+	return t.err
 }
 
 // Parses a torrent (AKA metainfo) file into a structure
@@ -35,19 +34,19 @@ func (t *TorrentError) Error() string {
 func ParseTorrent(filename string) (Torrent, error) {
 	bytes, err := os.ReadFile(filename)
 	if err != nil {
-		return Torrent{}, &TorrentError{err}
+		return Torrent{}, &TorrentError{"failed to read file"}
 	}
 
 	res, _, err := DecodeBencode(string(bytes))
 	if err != nil {
-		return Torrent{}, &TorrentError{err}
+		return Torrent{}, &TorrentError{"invalid bencode: " + err.Error()}
 	}
 
 	// Populate the torrent structure using type assertion
 	metainfo := res.(map[string]interface{})
 	info := metainfo["info"].(map[string]interface{})
 	if metainfo == nil || info == nil {
-		return Torrent{}, &TorrentError{errors.New("key not found")}
+		return Torrent{}, &TorrentError{"bencode missing keys"}
 	}
 
 	var file Torrent
@@ -58,14 +57,14 @@ func ParseTorrent(filename string) (Torrent, error) {
 	file.Length = uint32(info["length"].(int))
 	file.Name = info["name"].(string)
 	if file.Announce == "" || strInfoHash == "" || strPieces == "" || file.PieceLength == 0 || file.Length == 0 || file.Name == "" {
-		return Torrent{}, &TorrentError{errors.New("value not found")}
+		return Torrent{}, &TorrentError{"bencode missing values"}
 	}
 
 	// Calculate SHA-1 hash of the bencoded info dictionary and split piece hashes
 	file.InfoHash = GetHash([]byte(strInfoHash))
 	file.PieceHashes, err = SplitPieces(strPieces, hashLength)
 	if err != nil {
-		return Torrent{}, &TorrentError{err}
+		return Torrent{}, &TorrentError{err.Error()}
 	}
 
 	return file, nil
@@ -74,7 +73,7 @@ func ParseTorrent(filename string) (Torrent, error) {
 // Helper function to split a string on every multiple of n (chunkLength)
 func SplitPieces(pieces string, chunkLength int) ([][]byte, error) {
 	if len(pieces)%chunkLength != 0 {
-		return [][]byte{}, &TorrentError{errors.New("invalid pieces")}
+		return [][]byte{}, &TorrentError{"invalid pieces"}
 	}
 
 	var chunk []byte

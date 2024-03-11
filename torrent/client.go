@@ -32,7 +32,7 @@ func DownloadFile(name string, destination string) error {
 
 	// Make channels for each piece
 	workQueue := make(chan *work, len(torr.PieceHashes))
-	resQueue := make(chan *result, len(torr.PieceHashes))
+	resQueue := make(chan *result)
 	for i := range torr.PieceHashes {
 		size := int(torr.PieceLength)
 		// Get size and reduce if necessary (can occur on last piece of data)
@@ -54,8 +54,8 @@ func DownloadFile(name string, destination string) error {
 		res := <-resQueue
 		bound := int(torr.PieceLength) * res.Index
 		copy(file[bound:bound+len(res.Result)], res.Result)
-		fmt.Printf("Piece %d: %x \n", res.Index, res.Result)
 		done++
+		fmt.Printf("%d / %d complete \n", done, total)
 	}
 	close(workQueue)
 	close(resQueue)

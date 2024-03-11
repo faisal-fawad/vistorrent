@@ -18,6 +18,15 @@ type Message struct {
 	Payload []byte
 }
 
+type State struct {
+	Choked     bool
+	Downloaded int
+	Requested  int
+	Pending    int
+	Piece      []byte
+	Bitfield   []byte
+}
+
 const (
 	Choke         byte = 0 // No payload
 	Unchoke       byte = 1 // No payload
@@ -55,28 +64,27 @@ func ParseMessage(stream []byte) (Message, error) {
 
 // Handles all message types in the message structure
 // This is just to help with readability, may be removed in the future
-func (m *Message) HandleMessage() {
+func (m *Message) HandleMessage(state *State) {
 	switch m.Type {
 	case Choke:
-		fmt.Println("Choked!")
+		// fmt.Println("Chocked!")
+		state.Choked = true
 	case Unchoke:
-		fmt.Println("Unchoked!")
-	case Interested:
-		fmt.Println("Interested!")
-	case NotInterested:
-		fmt.Println("Not interested!")
-	case Have:
-		fmt.Println("Have!")
-	case Bitfield:
-		fmt.Println("Bitfield!")
-	case Request:
-		fmt.Println("Request!")
+		// fmt.Println("Unchoked!")
+		state.Choked = false
 	case Piece:
-		fmt.Println("Piece!")
-	case Cancel:
-		fmt.Println("Cancel!")
+		// fmt.Println("Piece!")
+		_, offset, block := ParsePiecePayload(m.Payload)
+		state.Pending--
+		state.Downloaded += len(block)
+		copy(state.Piece[offset:int(offset)+len(block)], block)
+	case Have:
+		// fmt.Println("Have!")
+		index := ParseHavePayload(m.Payload)
+		SetPiece(state.Bitfield, int(index))
+	// We are not expecting any of the cases below but they're illustrated for completeness
 	default:
-		fmt.Println("Invalid message!")
+		fmt.Printf("Invalid message: %x \n", m.Type)
 	}
 }
 
@@ -86,38 +94,29 @@ func (t *Torrent) PieceWorker(peer Peer, peerId []byte, workQueue chan *work, re
 	// Do handshake
 	conn, _, err := peer.PeerHandshake(t.InfoHash, peerId)
 	if err != nil {
+		fmt.Println(err)
 		return err
 	}
-	conn.SetDeadline(time.Now().Add(time.Second * 10))
-	defer conn.Close()
 
-	// Read the bitfield to later check which pieces have the piece we're after
+	// Read bitfield and initialize the current state of our peer
 	buf, err := ReadFullWithLength(conn, 4, 0)
 	if err != nil {
+		fmt.Println(err)
 		return err
 	}
 	msg, err := ParseMessage(buf)
 	if err != nil {
+		fmt.Println(err)
 		return err
 	}
 	var bitfield []byte = msg.Payload
+	state := State{true, 0, 0, 0, nil, bitfield}
 
 	// Write interested and unchoked, since connections start choked and uninterested
 	interested := Message{1, Interested, nil}
 	unchoke := Message{1, Unchoke, nil}
 	conn.Write(interested.BuildMessage())
 	conn.Write(unchoke.BuildMessage())
-
-	// The peer should send back an unchoke message here, which we will then read
-	buf, err = ReadFullWithLength(conn, 4, 0)
-	if err != nil {
-		return err
-	}
-	msg, err = ParseMessage(buf)
-	if err != nil {
-		return err
-	}
-	msg.HandleMessage()
 
 	// Attempt to download a piece from the work queue
 	for work := range workQueue {
@@ -126,10 +125,10 @@ func (t *Torrent) PieceWorker(peer Peer, peerId []byte, workQueue chan *work, re
 			continue
 		}
 
-		piece, err := t.DownloadBlock(conn, work)
+		piece, err := t.DownloadBlock(conn, work, &state)
 		if err != nil {
 			workQueue <- work // Place work back on queue
-			fmt.Println(err)
+			fmt.Println("Exitting with: " + err.Error())
 			return err
 		}
 
@@ -140,24 +139,46 @@ func (t *Torrent) PieceWorker(peer Peer, peerId []byte, workQueue chan *work, re
 		}
 
 		// Piece is complete and valid, place on to the results queue
+		bufHave := make([]byte, 4)
+		binary.BigEndian.PutUint32(bufHave, uint32(work.Index))
+		have := Message{5, Have, bufHave}
+		conn.Write(have.BuildMessage())
 		resQueue <- &result{work.Index, piece}
 	}
 	return nil
 }
 
+const MaxPending = 5
+
 // Helper function to download the blocks of a piece
 // We are assuming that when entering this function the peer is ready to
 // communicate via request and piece messages. TODO: implement pipelining
-func (t *Torrent) DownloadBlock(conn net.Conn, work *work) ([]byte, error) {
+func (t *Torrent) DownloadBlock(conn net.Conn, work *work, state *State) ([]byte, error) {
 	// Break the piece into blocks of 16 KiB (2^14 = 16384 bytes)
-	var i uint32
-	piece := make([]byte, work.Length)
-	for i = 0; i*blockSize < t.PieceLength; i++ {
-		requestPayload := BuildRequestPayload(i, uint32(work.Length), uint32(work.Index))
+	// Handle the current state of the connection through a structure
+	state.Piece = make([]byte, work.Length)
+	state.Downloaded = 0
+	state.Requested = 0
+	state.Pending = 0
 
-		// Write request
-		request := Message{uint32(requestLength + 1), Request, requestPayload}
-		conn.Write(request.BuildMessage())
+	conn.SetDeadline(time.Now().Add(time.Second * 30)) // Allow maximum of 30 seconds to download piece
+	defer conn.SetDeadline(time.Time{})                // Remove deadline on success
+
+	for uint32(state.Downloaded) < uint32(work.Length) {
+		if !state.Choked {
+			for state.Pending < MaxPending && state.Requested <= work.Length/int(blockSize) {
+				requestPayload := BuildRequestPayload(uint32(state.Requested), uint32(work.Length), uint32(work.Index))
+
+				// Write request
+				request := Message{uint32(requestLength + 1), Request, requestPayload}
+				conn.Write(request.BuildMessage())
+
+				// Update state
+				state.Pending++
+				state.Requested++
+			}
+
+		}
 
 		// Read piece
 		buf, err := ReadFullWithLength(conn, 4, 0)
@@ -168,12 +189,10 @@ func (t *Torrent) DownloadBlock(conn net.Conn, work *work) ([]byte, error) {
 		if err != nil {
 			return []byte{}, err
 		}
-		_, offset, block := ParsePiecePayload(msg.Payload)
-
-		// Place the block into its corresponding location
-		copy(piece[offset:int(offset)+len(block)], block)
+		msg.HandleMessage(state)
 	}
-	return piece, nil
+
+	return state.Piece, nil
 }
 
 // Helper function to handle request payloads
@@ -204,6 +223,11 @@ func ParsePiecePayload(payload []byte) (uint32, uint32, []byte) {
 	return index, begin, block
 }
 
+// Helper function handle have payloads
+func ParseHavePayload(payload []byte) uint32 {
+	return binary.BigEndian.Uint32(payload)
+}
+
 // Helper function to check if a hash of a piece matches with its corresponding
 // hash from the torrent structure
 func (t *Torrent) ValidatePiece(piece []byte, index int) bool {
@@ -216,4 +240,11 @@ func HavePiece(bitfield []byte, index int) bool {
 	byteIndex := index / 8
 	byteOffset := index % 8
 	return bitfield[byteIndex]>>(7-byteOffset)&1 != 0
+}
+
+// Helper function to add a piece to a peers bitfield, useful for have requests
+func SetPiece(bitfield []byte, index int) {
+	byteIndex := index / 8
+	byteOffset := index % 8
+	bitfield[byteIndex] |= 1 >> (7 - byteOffset)
 }

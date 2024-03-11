@@ -2,7 +2,6 @@ package torrent
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -23,12 +22,21 @@ func (peer *Peer) String() string {
 	return fmt.Sprintf("%s:%d", peer.IP.String(), peer.Port)
 }
 
+// A structure to define errors that occur with networking
+type NetworkError struct {
+	err string
+}
+
+func (n *NetworkError) Error() string {
+	return n.err
+}
+
 // Gets the peers of a torrent by sending a GET request to the torrent tracker
 func (torrent *Torrent) GetPeers(peerId []byte) ([]Peer, error) {
 	// Build the url
 	base, err := url.Parse(torrent.Announce)
 	if err != nil {
-		return []Peer{}, err
+		return []Peer{}, &DecodeError{"unable to parse tracker URL"}
 	}
 	query := url.Values{
 		"info_hash":  []string{string(torrent.InfoHash)},
@@ -44,20 +52,20 @@ func (torrent *Torrent) GetPeers(peerId []byte) ([]Peer, error) {
 	// Send GET request
 	res, err := http.Get(base.String())
 	if err != nil {
-		return []Peer{}, err
+		return []Peer{}, &NetworkError{"failed to get peers"}
 	}
 	defer res.Body.Close()
 	body, err := io.ReadAll(res.Body) // On success, body contains bencode
 	if err != nil {
 		return []Peer{}, err
 	}
-	if res.StatusCode != 200 {
-		return []Peer{}, errors.New("request to peer failed with status: " + res.Status + "\nand body: \n" + string(body))
+	if res.StatusCode != http.StatusOK {
+		return []Peer{}, &NetworkError{fmt.Sprintf("failed to get peers with status: %s\nand body: %s", res.Status, body)}
 	}
 
 	peers, err := ParsePeers(string(body))
 	if err != nil {
-		return []Peer{}, err
+		return []Peer{}, &DecodeError{err.Error()}
 	}
 
 	return peers, nil
@@ -67,7 +75,7 @@ func (torrent *Torrent) GetPeers(peerId []byte) ([]Peer, error) {
 func ParsePeers(bencode string) ([]Peer, error) {
 	res, _, err := DecodeBencode(bencode)
 	if err != nil {
-		return []Peer{}, nil
+		return []Peer{}, err
 	}
 
 	// TODO: implement interval key, ignored for now
@@ -79,7 +87,7 @@ func ParsePeers(bencode string) ([]Peer, error) {
 	var bytePeers [][]byte
 	bytePeers, err = SplitPieces(strPeers, peerSize)
 	if err != nil {
-		return []Peer{}, nil
+		return []Peer{}, err
 	}
 
 	for i := range bytePeers {

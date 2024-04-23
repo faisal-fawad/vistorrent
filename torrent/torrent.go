@@ -8,14 +8,13 @@ import (
 const hashLength int = 20
 
 // A torrent structure, note that the sizes of InfoHash and PieceHashes are not explictly
-// defined to make working with them easier. Typically, a hash has a length of 20, which is
-// constantly defined above.
+// defined to make working with them easier. Typically, a hash has a constant length which is defined above
 type Torrent struct {
 	Announce    string
 	InfoHash    []byte
 	PieceHashes [][]byte
-	PieceLength uint32 // Can't be negative
-	Length      uint32 // Also can't be negative
+	PieceLength uint32 // Length can't be negative
+	Length      uint32 // Length can't be negative
 	Name        string
 }
 
@@ -54,7 +53,11 @@ func ParseTorrent(filename string) (Torrent, error) {
 	strInfoHash := metainfo["info bencoded"].(string)
 	strPieces := info["pieces"].(string)
 	file.PieceLength = uint32(info["piece length"].(int))
-	file.Length = uint32(info["length"].(int))
+	length, ok := info["length"].(int)
+	if !ok {
+		return Torrent{}, &TorrentError{"only support single file .torrents"}
+	}
+	file.Length = uint32(length)
 	file.Name = info["name"].(string)
 	if file.Announce == "" || strInfoHash == "" || strPieces == "" || file.PieceLength == 0 || file.Length == 0 || file.Name == "" {
 		return Torrent{}, &TorrentError{"bencode missing values"}

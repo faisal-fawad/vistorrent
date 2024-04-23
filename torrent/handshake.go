@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-const extensionSize int = 8
-const peerIdSize int = 20
+const extensionSize int = 8 // 8 bytes which represents the enabled extensions on our client
+const peerIdSize int = 20   // The ID of a peer is 20 bytes
 
 type Handshake struct {
 	ProtocolLength byte
@@ -19,7 +19,7 @@ type Handshake struct {
 	InfoHash       []byte
 }
 
-// Builds a []byte representation of handshake
+// Builds a []byte representation of a handshake
 func (h *Handshake) BuildHandshake() []byte {
 	res := make([]byte, 0, len(h.Protocol)+len(h.Extensions)+len(h.PeerId)+len(h.InfoHash)+1)
 	res = append(res, h.ProtocolLength)
@@ -54,13 +54,13 @@ func (peer Peer) PeerHandshake(infoHash []byte, peerId []byte) (net.Conn, Handsh
 		return nil, Handshake{}, &NetworkError{"failed to connect to peer"}
 	}
 	conn.SetDeadline(time.Now().Add(time.Second * 3))
-	defer conn.SetDeadline(time.Time{}) // Remove deadline on success
+	defer conn.SetDeadline(time.Time{}) // Want to keep our connection on success
 
 	// Send handshake
 	var inHand Handshake = Handshake{
 		byte(19),
 		"BitTorrent protocol",
-		make([]byte, 8),
+		make([]byte, extensionSize),
 		infoHash,
 		peerId,
 	}
@@ -91,7 +91,7 @@ func (peer Peer) PeerHandshake(infoHash []byte, peerId []byte) (net.Conn, Handsh
 // which in decimal representation is 2, followed by 2 bytes of data (0x05e0)
 func ReadFullWithLength(conn net.Conn, prefixLength int, extraBytes uint32) ([]byte, error) {
 	if prefixLength > 4 || prefixLength < 0 {
-		return []byte{}, fmt.Errorf("prefix length must be between 0 to 4")
+		return []byte{}, fmt.Errorf("prefix length must be in the range 0 to 4")
 	}
 	bufLength := make([]byte, prefixLength)
 	_, err := io.ReadFull(conn, bufLength)
@@ -103,11 +103,7 @@ func ReadFullWithLength(conn net.Conn, prefixLength int, extraBytes uint32) ([]b
 	lengthSlice = append(lengthSlice, bufLength...)
 	var length uint32 = binary.BigEndian.Uint32(lengthSlice)
 
-	// Keep alive
-	if length == 0 {
-		fmt.Println("Keep alive!")
-	}
-
+	// Keep-alive messages are handled by design
 	buf := make([]byte, length+extraBytes)
 	_, err = io.ReadFull(conn, buf)
 	if err != nil {

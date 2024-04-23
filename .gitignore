@@ -1,4 +1,5 @@
-*.torrent
+/*.torrent
 *.exe
 *.txt
-tmp
+tmp/*
+!tmp/.gitkeep

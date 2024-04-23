@@ -9,8 +9,8 @@ import (
 	"net/url"
 )
 
-const peerSize int = 6
-const ipSize int = peerSize - 2
+const peerSize int = 6          // A peer is 6 bytes long
+const ipSize int = peerSize - 2 // The IP of a peer is 4 bytes long
 
 type Peer struct {
 	IP   net.IP
@@ -40,11 +40,11 @@ func (torrent *Torrent) GetPeers(peerId []byte) ([]Peer, error) {
 	}
 	query := url.Values{
 		"info_hash":  []string{string(torrent.InfoHash)},
-		"peer_id":    []string{string(peerId)},             // Assume length of 20 bytes
-		"port":       []string{"6881"},                     // Default port for downloading
-		"uploaded":   []string{"0"},                        // Assume zero for now
-		"downloaded": []string{"0"},                        // Assume zero for now
-		"left":       []string{fmt.Sprint(torrent.Length)}, // Assume full length for now
+		"peer_id":    []string{string(peerId)},             // A randomly generated peer ID
+		"port":       []string{"6881"},                     // The default port as per the specification
+		"uploaded":   []string{"0"},                        // We do not support seeding
+		"downloaded": []string{"0"},                        // Start at zero
+		"left":       []string{fmt.Sprint(torrent.Length)}, // We do not support resuming
 		"compact":    []string{"1"},
 	}
 	base.RawQuery = query.Encode()
@@ -57,10 +57,10 @@ func (torrent *Torrent) GetPeers(peerId []byte) ([]Peer, error) {
 	defer res.Body.Close()
 	body, err := io.ReadAll(res.Body) // On success, body contains bencode
 	if err != nil {
-		return []Peer{}, err
+		return []Peer{}, &DecodeError{err.Error()}
 	}
 	if res.StatusCode != http.StatusOK {
-		return []Peer{}, &NetworkError{fmt.Sprintf("failed to get peers with status: %s\nand body: %s", res.Status, body)}
+		return []Peer{}, &NetworkError{fmt.Sprintf("failed to get peers with status: %s \n"+"and body: %s", res.Status, body)}
 	}
 
 	peers, err := ParsePeers(string(body))
@@ -78,18 +78,19 @@ func ParsePeers(bencode string) ([]Peer, error) {
 		return []Peer{}, err
 	}
 
-	// TODO: implement interval key, ignored for now
+	// TODO: implement usage of the interval key
 	info := res.(map[string]interface{})
 	strPeers := info["peers"].(string)
 
 	// Populate torrent structure array
 	peers := make([]Peer, 0, len(strPeers)/peerSize)
 	var bytePeers [][]byte
-	bytePeers, err = SplitPieces(strPeers, peerSize)
+	bytePeers, err = SplitPieces(strPeers, peerSize) // Defined in torrent.go
 	if err != nil {
 		return []Peer{}, err
 	}
 
+	// Build array of peers
 	for i := range bytePeers {
 		var peer Peer
 		peer.IP = net.IP(bytePeers[i][:ipSize])

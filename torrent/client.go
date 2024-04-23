@@ -4,14 +4,15 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"runtime"
 )
 
-type work struct {
+type Work struct {
 	Index  int
 	Length int
 }
 
-type result struct {
+type Result struct {
 	Index  int
 	Result []byte
 }
@@ -31,15 +32,15 @@ func DownloadFile(name string, destination string) error {
 	}
 
 	// Make channels for each piece
-	workQueue := make(chan *work, len(torr.PieceHashes))
-	resQueue := make(chan *result)
+	workQueue := make(chan *Work, len(torr.PieceHashes))
+	resQueue := make(chan *Result)
 	for i := range torr.PieceHashes {
 		size := int(torr.PieceLength)
 		// Get size and reduce if necessary (can occur on last piece of data)
-		if int(torr.Length)-(i*size) < size {
-			size = int(torr.Length) - (i * size)
+		if int(torr.Length)-i*size < size {
+			size = int(torr.Length) - i*size
 		}
-		workQueue <- &work{i, size}
+		workQueue <- &Work{i, size}
 	}
 
 	for i := range peers {
@@ -55,12 +56,11 @@ func DownloadFile(name string, destination string) error {
 		bound := int(torr.PieceLength) * res.Index
 		copy(file[bound:bound+len(res.Result)], res.Result)
 		done++
-		fmt.Printf("%d / %d complete \n", done, total)
+		fmt.Printf("Piece #%d complete (%d / %d) with %d peers \n", res.Index, done, total, runtime.NumGoroutine()-1)
 	}
 	close(workQueue)
 	close(resQueue)
 
-	fmt.Printf("Code reaching here means success (hopefully)!")
 	err = os.WriteFile(destination, file, 0644)
 	return err
 }

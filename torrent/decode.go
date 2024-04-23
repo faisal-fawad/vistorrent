@@ -10,6 +10,7 @@ import (
 const msg string = "! this string may not follow the bencode schema"
 const start int = 1
 
+// A structure to define errors that occur with decoding bencode
 type DecodeError struct {
 	err string
 }

@@ -3,8 +3,10 @@ package torrent
 import (
 	"crypto/rand"
 	"fmt"
+	"net/http"
 	"os"
 	"runtime"
+	"time"
 )
 
 type Work struct {
@@ -17,7 +19,7 @@ type Result struct {
 	Result []byte
 }
 
-func DownloadFile(name string, destination string) error {
+func DownloadFile(name string, destination string, w http.ResponseWriter) error {
 	torr, err := ParseTorrent(name)
 	if err != nil {
 		return err
@@ -48,6 +50,12 @@ func DownloadFile(name string, destination string) error {
 		go torr.PieceWorker(peer, peerId, workQueue, resQueue)
 	}
 
+	// Send number of pieces to server
+	fmt.Fprintf(w, "data: %d \n\n", len(torr.PieceHashes))
+	w.(http.Flusher).Flush()
+	time.Sleep(1 * time.Second)
+	// For case study
+
 	done := 0
 	total := len(torr.PieceHashes)
 	file := make([]byte, torr.Length)
@@ -57,6 +65,11 @@ func DownloadFile(name string, destination string) error {
 		copy(file[bound:bound+len(res.Result)], res.Result)
 		done++
 		fmt.Printf("Piece #%d complete (%d / %d) with %d peers \n", res.Index, done, total, runtime.NumGoroutine()-1)
+
+		// Send data to server
+		fmt.Fprintf(w, "data: %d \n\n", res.Index)
+		w.(http.Flusher).Flush()
+		// For case study
 	}
 	close(workQueue)
 	close(resQueue)
